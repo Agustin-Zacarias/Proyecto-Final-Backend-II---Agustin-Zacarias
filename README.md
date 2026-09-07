@@ -1,10 +1,14 @@
-# Plataforma de Eventos e Inscripciones - Preentrega 6
+# Plataforma de Eventos e Inscripciones - Preentrega 7
 
-Backend desarrollado con Node.js, Express y MongoDB para una plataforma de eventos e inscripciones.
+Proyecto desarrollado para el curso **Programación Backend II: Diseño y Arquitectura Backend** de Coderhouse.
 
-En esta preentrega se completa la entidad `Event` y se incorpora la lógica de negocio necesaria para crear, consultar, actualizar y cancelar eventos.
+## Descripción
 
-También se implementan filtros, paginación, ordenamiento, control de acceso por roles y validación de propiedad de los eventos.
+Esta entrega incorpora el flujo completo de inscripciones a eventos mediante tickets.
+
+Los usuarios autenticados pueden inscribirse a eventos publicados, siempre que haya cupos disponibles y no tengan una inscripción activa previa para el mismo evento.
+
+También se implementan cancelaciones, control de cupos, consulta de tickets y envío de emails de confirmación mediante Nodemailer.
 
 ## Tecnologías utilizadas
 
@@ -12,673 +16,349 @@ También se implementan filtros, paginación, ordenamiento, control de acceso po
 - Express
 - MongoDB
 - Mongoose
-- Passport.js
+- Passport
 - JWT
 - bcrypt
-- cookie-parser
+- Nodemailer
 - dotenv
-- nodemon
+- Nodemon
+- JavaScript
+- ES Modules
 
 ## Instalación
-
-Instalar las dependencias:
 
 ```bash
 npm install
 ```
 
-Crear un archivo `.env` tomando como referencia `.env.example`:
+Crear un archivo `.env` en la raíz del proyecto tomando como referencia `.env.example`.
+
+## Variables de entorno
 
 ```env
-PORT=8080
-NODE_ENV=development
+PORT=
+NODE_ENV=
 MONGO_URL=
 JWT_SECRET=
-JWT_EXPIRES_IN=1h
+JWT_EXPIRES_IN=
+
+MAIL_HOST=
+MAIL_PORT=
+MAIL_USER=
+MAIL_PASS=
+MAIL_FROM=
 ```
 
-Iniciar el proyecto en modo desarrollo:
+Las credenciales reales deben mantenerse únicamente en `.env`.
+
+El archivo `.env` no debe subirse al repositorio.
+
+## Ejecución
+
+Modo desarrollo:
 
 ```bash
 npm run dev
 ```
 
-Por defecto, el servidor se ejecuta en:
+Modo normal:
 
-```text
-http://localhost:8080
+```bash
+npm start
 ```
 
----
+## Entidad Ticket
 
-# Modelo Event
-
-Los eventos se almacenan en MongoDB utilizando el modelo `Event`.
+La entidad `Ticket` relaciona un usuario con un evento mediante referencias de MongoDB.
 
 Campos principales:
 
-| Campo | Tipo | Descripción |
-|---|---|---|
-| `title` | String | Título del evento |
-| `description` | String | Descripción |
-| `category` | String | Categoría |
-| `date` | Date | Fecha del evento |
-| `location` | String | Ubicación |
-| `capacity` | Number | Capacidad máxima |
-| `price` | Number | Precio |
-| `status` | String | Estado actual |
-| `organizer` | ObjectId | Referencia al usuario organizador |
-
-El campo `organizer` es una referencia al modelo `User` y no almacena el objeto completo del usuario.
-
-```js
-organizer: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "User",
-  required: true
-}
+```text
+user
+event
+status
+quantity
+reservationCode
+createdAt
+cancelledAt
 ```
 
-## Estados de un evento
+Los campos `user` y `event` utilizan referencias `ObjectId`, por lo que no se almacenan objetos completos dentro del ticket.
+
+## Estados de Ticket
 
 Los estados permitidos son:
 
 ```text
-draft
-published
+confirmed
+pending
 cancelled
-finished
 ```
 
-Un evento nuevo utiliza `draft` como estado por defecto si no se especifica otro estado válido.
+Un ticket cancelado permanece almacenado en la base de datos pero deja de ocupar cupo.
 
----
+## Flujo de inscripción
 
-# Roles y permisos
+Para crear una inscripción se realizan las siguientes validaciones:
 
-El sistema utiliza tres roles:
+1. El evento debe existir.
+2. El evento debe estar publicado.
+3. El evento no puede estar cancelado ni finalizado.
+4. `quantity` debe ser un número entero mayor a cero.
+5. Debe haber cupos suficientes.
+6. El usuario no puede tener otro ticket activo para el mismo evento.
 
-### user
+Si todas las validaciones son correctas, se crea un ticket con estado:
 
-Usuario común de la plataforma.
+```text
+confirmed
+```
 
-Puede consultar eventos públicos, pero no puede crear ni modificar eventos.
+y se genera un código de reserva único.
 
-### organizer
+Después de confirmar la inscripción se envía un email utilizando Nodemailer.
 
-Puede crear eventos y modificar los eventos que le pertenecen.
+## Control de cupos
 
-No puede modificar eventos creados por otros organizadores.
+Los cupos ocupados se calculan sumando la cantidad de entradas de todos los tickets activos del evento.
 
-### admin
+Los tickets con:
 
-Puede crear eventos y modificar cualquier evento, independientemente del organizador que lo haya creado.
+```text
+status: cancelled
+```
 
-También posee acceso a las funcionalidades administrativas implementadas previamente.
+no se incluyen en el cálculo.
 
-## Matriz de permisos
+Por lo tanto, al cancelar una inscripción, esos cupos quedan disponibles nuevamente.
 
-| Acción | user | organizer | admin |
-|---|---|---|---|
-| Listar eventos | Sí | Sí | Sí |
-| Consultar evento por ID | Sí | Sí | Sí |
-| Crear eventos | No | Sí | Sí |
-| Modificar evento propio | No | Sí | Sí |
-| Modificar evento ajeno | No | No | Sí |
-| Cambiar estado propio | No | Sí | Sí |
-| Cambiar estado ajeno | No | No | Sí |
+## Rutas
 
----
-
-# Endpoints de eventos
-
-## Crear evento
+### Crear inscripción
 
 ```http
-POST /api/events
+POST /api/events/:eid/tickets
 ```
 
 Acceso:
 
 ```text
-organizer
-admin
+Usuario autenticado
 ```
 
-Ejemplo:
+Ejemplo de body:
 
 ```json
 {
-  "title": "Workshop Node 2026",
-  "description": "Taller práctico de Node.js y Express",
-  "category": "workshop",
-  "date": "2026-10-20T18:00:00.000Z",
-  "location": "Buenos Aires",
-  "capacity": 50,
-  "price": 15000,
-  "status": "published"
+  "quantity": 1
 }
 ```
 
-El campo `organizer` no debe enviarse desde el cliente.
+Respuesta exitosa:
 
-El servidor obtiene automáticamente el usuario autenticado y asigna:
-
-```js
-organizer: req.user.id
+```text
+201 Created
 ```
-
-De esta forma, un usuario no puede crear un evento a nombre de otro organizador.
-
-Una creación correcta devuelve HTTP `201`.
 
 ---
 
-## Listar eventos
+### Consultar mis tickets
 
 ```http
-GET /api/events
-```
-
-La ruta es pública.
-
-El listado utiliza paginación y permite aplicar diferentes filtros.
-
-Ejemplo:
-
-```http
-GET /api/events?status=published&category=workshop&page=1&limit=5&sort=date
-```
-
-La respuesta posee la siguiente estructura:
-
-```json
-{
-  "status": "success",
-  "data": [],
-  "page": 1,
-  "limit": 5,
-  "total": 0,
-  "totalPages": 0
-}
-```
-
----
-
-# Filtros disponibles
-
-## Estado
-
-```text
-?status=published
-```
-
-Los estados válidos son:
-
-```text
-draft
-published
-cancelled
-finished
-```
-
-## Categoría
-
-```text
-?category=workshop
-```
-
-## Ubicación
-
-```text
-?location=Buenos Aires
-```
-
-## Rango de fechas
-
-Se puede filtrar utilizando `dateFrom` y `dateTo`.
-
-Ejemplo:
-
-```text
-?dateFrom=2026-10-01&dateTo=2026-12-31
-```
-
-También pueden utilizarse de forma independiente.
-
----
-
-# Paginación
-
-El listado acepta:
-
-```text
-page
-limit
-```
-
-Ejemplo:
-
-```text
-?page=2&limit=5
-```
-
-La respuesta incluye:
-
-```text
-data
-page
-limit
-total
-totalPages
-```
-
-El valor por defecto de `page` es `1` y el valor por defecto de `limit` es `10`.
-
----
-
-# Ordenamiento
-
-El parámetro:
-
-```text
-sort
-```
-
-permite ordenar los resultados.
-
-Por ejemplo, para ordenar por fecha de manera ascendente:
-
-```text
-?sort=date
-```
-
-Para ordenar de manera descendente:
-
-```text
-?sort=-date
-```
-
-Los filtros, la paginación y el ordenamiento pueden combinarse:
-
-```text
-/api/events?status=published&category=workshop&page=1&limit=5&sort=date
-```
-
----
-
-# Consultar evento por ID
-
-```http
-GET /api/events/:id
-```
-
-La ruta es pública.
-
-Si el evento existe, devuelve HTTP `200`.
-
-Si no existe, devuelve HTTP `404`:
-
-```json
-{
-  "status": "error",
-  "message": "Evento no encontrado"
-}
-```
-
----
-
-# Modificar evento
-
-```http
-PUT /api/events/:id
+GET /api/tickets/my-tickets
 ```
 
 Acceso:
 
 ```text
-organizer propietario
-admin
+Usuario autenticado
 ```
 
-Un organizador solamente puede modificar los eventos que creó.
+La respuesta contiene únicamente los tickets del usuario autenticado.
 
-Si intenta modificar un evento perteneciente a otro organizador, el servidor devuelve HTTP `403`:
+Los datos del evento se obtienen mediante `populate`:
 
-```json
-{
-  "status": "error",
-  "message": "No tenés permisos para realizar esta acción"
-}
+```text
+title
+date
+location
 ```
-
-Un administrador puede modificar eventos pertenecientes a cualquier organizador.
-
-El campo `organizer` no puede modificarse mediante este endpoint.
-
-El estado tampoco se modifica mediante el `PUT` general, ya que existe un endpoint específico para cambios de estado.
 
 ---
 
-# Cambiar estado de un evento
+### Consultar tickets de un evento
 
 ```http
-PATCH /api/events/:id/status
+GET /api/events/:eid/tickets
 ```
 
 Acceso:
 
 ```text
-organizer propietario
+organizer propietario del evento
 admin
 ```
 
-Ejemplo:
-
-```json
-{
-  "status": "cancelled"
-}
-```
-
-Cancelar un evento no lo elimina de MongoDB.
-
-En su lugar, cambia su estado a:
-
-```text
-cancelled
-```
-
-Esto permite conservar el registro y la información histórica del evento.
+Un organizer no puede consultar las inscripciones correspondientes a eventos de otro organizer.
 
 ---
 
-# Reglas de negocio
+### Cancelar inscripción
 
-La lógica de negocio relacionada con eventos se encuentra en la capa `services`.
-
-## Fecha del evento
-
-No se permite crear un evento con una fecha pasada.
-
-En ese caso se devuelve HTTP `400`:
-
-```json
-{
-  "status": "error",
-  "message": "La fecha del evento debe ser futura"
-}
+```http
+PATCH /api/tickets/:tid/cancel
 ```
 
-## Capacidad
-
-La capacidad debe ser mayor a `0`.
-
-Por ejemplo:
-
-```json
-{
-  "capacity": 0
-}
-```
-
-produce HTTP `400`.
-
-## Precio
-
-El precio debe ser mayor o igual a `0`.
-
-Los eventos gratuitos pueden utilizar:
-
-```json
-{
-  "price": 0
-}
-```
-
-Los precios negativos son rechazados.
-
-## Eventos cancelados
-
-Un evento cuyo estado sea:
+Acceso:
 
 ```text
-cancelled
+Dueño del ticket
+admin
 ```
 
-no puede seguir modificándose.
+La cancelación no elimina el documento.
 
-Tampoco puede volver a cambiarse su estado.
-
-Por ejemplo, intentar cambiar un evento cancelado nuevamente a `published` produce un error de validación.
-
-## Eventos finalizados
-
-Un evento con estado:
+El ticket pasa a:
 
 ```text
-finished
+status: cancelled
 ```
 
-no puede volver a publicarse.
-
-## Ownership
-
-Cada evento guarda el ID del usuario que lo creó mediante:
+y se registra:
 
 ```text
-organizer
+cancelledAt
 ```
 
-Cuando un organizador intenta modificar un evento, el sistema compara el organizador almacenado con:
+## Notificaciones por email
 
-```js
-req.user.id
+La aplicación utiliza Nodemailer para enviar un correo cuando una inscripción se confirma correctamente.
+
+La configuración SMTP se obtiene mediante:
+
+```env
+MAIL_HOST=
+MAIL_PORT=
+MAIL_USER=
+MAIL_PASS=
+MAIL_FROM=
 ```
 
-Si los identificadores no coinciden, la operación devuelve HTTP `403`.
+Durante el desarrollo se utilizó Ethereal Email como servidor SMTP de prueba.
 
-Los administradores pueden modificar eventos de cualquier organizador.
+Las credenciales nunca están hardcodeadas en el código.
 
----
+## Arquitectura
 
-# Autenticación y autorización
-
-La autenticación utiliza JWT almacenado en una cookie `httpOnly`.
-
-Las rutas protegidas utilizan los middlewares:
+El módulo de tickets respeta la arquitectura por capas:
 
 ```text
-auth.middleware.js
-authorize.middleware.js
-```
-
-`auth` verifica que exista una sesión válida y almacena la información del usuario autenticado en:
-
-```js
-req.user
-```
-
-`authorize` comprueba que el usuario tenga uno de los roles permitidos para ejecutar la operación.
-
----
-
-# Códigos 401 y 403
-
-El proyecto diferencia autenticación de autorización.
-
-## 401 - No autenticado
-
-Se devuelve cuando no existe una sesión válida.
-
-```json
-{
-  "status": "error",
-  "message": "No autenticado"
-}
-```
-
-## 403 - Sin permisos
-
-Se devuelve cuando existe una sesión válida, pero el usuario no tiene permisos suficientes.
-
-```json
-{
-  "status": "error",
-  "message": "No tenés permisos para realizar esta acción"
-}
-```
-
----
-
-# Arquitectura
-
-El proyecto mantiene una separación por capas.
-
-```text
-Routes
-   ↓
-Controllers
-   ↓
-Services
-   ↓
-Repositories
-   ↓
+Route
+  ↓
+Controller
+  ↓
+Service
+  ↓
+Repository
+  ↓
 DAO
-   ↓
+  ↓
+Model
+  ↓
 MongoDB
 ```
 
-## Routes
+La lógica de negocio se encuentra en la capa `services`.
 
-Definen los endpoints y aplican los middlewares correspondientes.
+Las rutas y controllers no realizan validaciones de cupos ni reglas de negocio.
 
-## Controllers
-
-Se encargan de recibir las peticiones HTTP y construir las respuestas.
-
-No contienen las reglas de negocio de eventos.
-
-## Services
-
-Contienen las reglas de negocio:
-
-- validación de fechas
-- validación de capacidad
-- validación de precio
-- validación de estados
-- ownership
-- bloqueo de eventos cancelados
-- filtros
-- paginación
-- ordenamiento
-
-## Repositories
-
-Funcionan como capa intermedia entre los servicios y el acceso a datos.
-
-## DAO
-
-Realizan las operaciones directamente sobre MongoDB mediante Mongoose.
-
----
-
-# Pruebas realizadas
-
-Las funcionalidades fueron probadas utilizando Postman.
-
-| Caso | Resultado esperado |
-|---|---|
-| Crear evento como `user` | 403 |
-| Crear evento como `organizer` | 201 |
-| Crear evento con fecha pasada | 400 |
-| Crear evento con `capacity: 0` | 400 |
-| Crear evento con precio negativo | 400 |
-| Organizer modifica evento propio | 200 |
-| Organizer modifica evento ajeno | 403 |
-| Admin modifica evento ajeno | 200 |
-| Cancelar evento | 200 |
-| Cambiar estado de evento cancelado | 400 |
-| Consultar evento existente | 200 |
-| Consultar evento inexistente | 404 |
-| Listar eventos con filtros | 200 |
-| Listar eventos con paginación | 200 |
-| Ordenar eventos por fecha | 200 |
-
-Ejemplo de listado probado:
-
-```text
-GET /api/events?status=published&category=workshop&page=1&limit=5&sort=date
-```
-
-También se verificó el filtrado por rango de fechas:
-
-```text
-GET /api/events?dateFrom=2026-10-01&dateTo=2026-12-31&page=1&limit=5
-```
-
----
-
-# Estructura principal
+## Archivos principales incorporados
 
 ```text
 src/
-├── config/
-│   ├── db.js
-│   └── passport.config.js
 ├── controllers/
-│   ├── events.controller.js
-│   ├── sessions.controller.js
-│   └── users.controller.js
+│   └── tickets.controller.js
 ├── dao/
-│   ├── events.dao.js
-│   └── users.dao.js
-├── middlewares/
-│   ├── auth.middleware.js
-│   └── authorize.middleware.js
+│   └── tickets.dao.js
 ├── models/
-│   ├── Event.js
-│   └── User.js
+│   └── Ticket.js
 ├── repositories/
-│   ├── events.repository.js
-│   └── users.repository.js
+│   └── tickets.repository.js
 ├── routes/
-│   ├── events.router.js
-│   ├── sessions.router.js
-│   └── users.router.js
+│   └── tickets.router.js
 ├── services/
-│   └── events.service.js
-├── utils/
-│   ├── hash.js
-│   └── jwt.js
-├── app.js
-└── server.js
+│   └── tickets.service.js
+└── utils/
+    └── mailer.js
 ```
 
----
+También se modificaron las rutas de eventos para incorporar:
 
-# Seguridad
+```text
+POST /api/events/:eid/tickets
+GET  /api/events/:eid/tickets
+```
 
-- Las contraseñas se almacenan mediante bcrypt.
-- La autenticación utiliza JWT.
-- El JWT se almacena en una cookie `httpOnly`.
-- Los roles privilegiados no pueden asignarse desde el registro público.
-- El organizador de un evento se obtiene desde el usuario autenticado y no desde el body.
-- Los permisos se validan en el backend.
-- Se diferencia entre errores `401` y `403`.
-- Los organizadores no pueden modificar eventos ajenos.
-- Los eventos cancelados no se eliminan físicamente.
-- Las variables sensibles se almacenan en `.env`.
-- `.env` y `node_modules` no deben subirse al repositorio.
+## Validaciones implementadas
 
----
+Se contemplan los siguientes casos:
 
-# Estado de la Preentrega 6
+```text
+Inscripción exitosa
+Usuario sin sesión
+Evento inexistente
+Evento cancelado o finalizado
+Cantidad inválida
+Falta de cupos
+Inscripción duplicada
+Cancelación propia
+Cancelación de ticket ajeno
+Consulta no autorizada de tickets de eventos
+Organizer intentando consultar eventos ajenos
+Cancelación repetida
+```
 
-Se completó la entidad `Event` y su lógica de negocio.
+## Pruebas
 
-La API permite crear, listar, consultar, modificar y cancelar eventos respetando los permisos de cada rol y la propiedad del recurso.
+Las pruebas se realizaron utilizando Postman.
 
-El listado de eventos incorpora filtros por estado, categoría, ubicación y rango de fechas, además de paginación y ordenamiento.
+Se verificaron los siguientes comportamientos:
 
-La arquitectura mantiene separadas las responsabilidades entre rutas, controllers, services, repositories y DAO, dejando preparada la plataforma para los próximos módulos relacionados con inscripciones, tickets y control de cupos.
+```text
+Inscripción exitosa                  → 201
+Inscripción sin sesión               → 401
+Evento inexistente                   → 404
+Evento cancelado/finalizado          → 400
+Sin cupos suficientes                → 400
+Inscripción duplicada                → 409
+Cancelación propia                   → 200
+Ticket ajeno como user               → 403
+Consulta de tickets como user        → 403
+Organizer sobre evento ajeno         → 403
+```
+
+También se verificó que:
+
+- los tickets cancelados no sean eliminados;
+- `cancelledAt` se registre;
+- los cupos se liberen al cancelar;
+- los tickets propios incluyan información del evento;
+- se genere un código de reserva;
+- el email de confirmación se genere mediante Nodemailer;
+- las credenciales SMTP permanezcan en variables de entorno.
+
+## Estado de la Preentrega 7
+
+La entrega incluye:
+
+- entidad `Ticket`;
+- relaciones entre usuarios y eventos;
+- control de cupos;
+- prevención de duplicados;
+- cancelaciones lógicas;
+- liberación automática de cupos;
+- consulta de tickets propios;
+- consulta de tickets por evento con permisos;
+- validaciones en services;
+- envío de email con Nodemailer;
+- configuración mediante variables de entorno.

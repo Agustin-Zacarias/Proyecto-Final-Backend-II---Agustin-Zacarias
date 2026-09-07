@@ -8,6 +8,11 @@ import {
   updateEventStatus
 } from "../controllers/events.controller.js";
 
+import {
+  createTicketController,
+  getEventTicketsController,
+} from "../controllers/tickets.controller.js";
+
 import { auth } from "../middlewares/auth.middleware.js";
 import { authorize } from "../middlewares/authorize.middleware.js";
 
@@ -41,6 +46,21 @@ router.patch(
   auth,
   authorize("organizer", "admin"),
   updateEventStatus
+);
+
+// Crear inscripción
+router.post(
+  "/:eid/tickets",
+  auth,
+  createTicketController
+);
+
+// Ver tickets de un evento
+router.get(
+  "/:eid/tickets",
+  auth,
+  authorize("organizer", "admin"),
+  getEventTicketsController
 );
 
 export default router;
