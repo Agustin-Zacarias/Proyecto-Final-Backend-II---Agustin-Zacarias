@@ -1,4 +1,5 @@
 import { generateToken } from "../utils/jwt.js";
+import { userDTO } from "../dto/user.dto.js";
 
 export const register = async (req, res) => {
   try {
@@ -50,11 +51,7 @@ export const login = async (req, res) => {
 export const current = async (req, res) => {
   res.status(200).json({
     status: "success",
-    payload: {
-      id: req.user.id,
-      email: req.user.email,
-      role: req.user.role
-    }
+    payload: userDTO(req.user)
   });
 };
 

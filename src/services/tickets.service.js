@@ -1,7 +1,5 @@
 import crypto from "crypto";
 
-import Event from "../models/Event.js";
-
 import {
   createTicketRepository,
   getTicketByIdRepository,
@@ -9,8 +7,10 @@ import {
   getUserTicketsRepository,
   getEventTicketsRepository,
   getOccupiedCapacityRepository,
-  cancelTicketRepository,
+  cancelTicketRepository
 } from "../repositories/tickets.repository.js";
+
+import { findEventById } from "../repositories/events.repository.js";
 
 import { sendTicketConfirmationEmail } from "../utils/mailer.js";
 
@@ -27,7 +27,7 @@ const generateReservationCode = () => {
 // Crear una inscripción
 export const createEnrollment = async (eventId, user, quantity) => {
   // Buscar el evento
-  const event = await Event.findById(eventId);
+  const event = await findEventById(eventId);
 
   if (!event) {
     throw createError("Evento no encontrado", 404);
@@ -117,7 +117,7 @@ export const getMyTickets = async (userId) => {
 
 // Obtener los tickets de un evento
 export const getEventTickets = async (eventId, user) => {
-  const event = await Event.findById(eventId);
+  const event = await findEventById(eventId);
 
   if (!event) {
     throw createError("Evento no encontrado", 404);

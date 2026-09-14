@@ -6,13 +6,16 @@ import {
   changeEventStatus
 } from "../services/events.service.js";
 
+import { eventDTO } from "../dto/event.dto.js";
+
 export const getAllEvents = async (req, res) => {
   try {
     const result = await getEvents(req.query);
 
     res.status(200).json({
       status: "success",
-      ...result
+      ...result,
+      data: result.data.map(eventDTO)
     });
   } catch (error) {
     res.status(error.statusCode || 500).json({
@@ -30,7 +33,7 @@ export const getEventById = async (req, res) => {
 
     res.status(200).json({
       status: "success",
-      payload: event
+      payload: eventDTO(event)
     });
   } catch (error) {
     res.status(error.statusCode || 500).json({
@@ -51,7 +54,7 @@ export const createEvent = async (req, res) => {
 
     res.status(201).json({
       status: "success",
-      payload: event
+      payload: eventDTO(event)
     });
   } catch (error) {
     res.status(error.statusCode || 500).json({
@@ -73,7 +76,7 @@ export const updateEvent = async (req, res) => {
 
     res.status(200).json({
       status: "success",
-      payload: event
+      payload: eventDTO(event)
     });
   } catch (error) {
     res.status(error.statusCode || 500).json({
@@ -95,7 +98,7 @@ export const updateEventStatus = async (req, res) => {
 
     res.status(200).json({
       status: "success",
-      payload: event
+      payload: eventDTO(event)
     });
   } catch (error) {
     res.status(error.statusCode || 500).json({
