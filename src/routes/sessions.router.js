@@ -7,7 +7,6 @@ import {
   current,
   logout
 } from "../controllers/sessions.controller.js";
-import { auth } from "../middlewares/auth.middleware.js";
 
 const router = Router();
 
@@ -53,7 +52,10 @@ router.post(
   passportCallback("login", login)
 );
 
-router.get("/current", auth, current);
+router.get(
+  "/current",
+  passportCallback("current", current)
+);
 
 router.post("/logout", logout);
 

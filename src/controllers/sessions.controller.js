@@ -7,13 +7,7 @@ export const register = async (req, res) => {
 
     res.status(201).json({
       status: "success",
-      payload: {
-        id: user._id,
-        first_name: user.first_name,
-        last_name: user.last_name,
-        email: user.email,
-        role: user.role
-      }
+      payload: userDTO(user)
     });
   } catch (error) {
     res.status(500).json({

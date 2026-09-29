@@ -210,7 +210,21 @@ export const updateExistingEvent = async (
       400
     );
   }
+  if (eventData.date !== undefined) {
+    const eventDate = new Date(eventData.date);
 
+    if (
+      Number.isNaN(eventDate.getTime()) ||
+      eventDate <= new Date()
+    ) {
+      throw createError(
+        "La fecha del evento debe ser futura",
+        400
+      );
+    }
+
+    eventData.date = eventDate;
+  }
   if (
     eventData.capacity !== undefined &&
     Number(eventData.capacity) <= 0

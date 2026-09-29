@@ -84,7 +84,7 @@ export const createEnrollment = async (eventId, user, quantity) => {
   if (availableCapacity < parsedQuantity) {
     throw createError(
       `No hay cupos suficientes. Cupos disponibles: ${availableCapacity}`,
-      400
+      409
     );
   }
 
